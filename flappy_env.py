@@ -18,9 +18,12 @@ bird_img = pygame.transform.scale((pygame.image.load('flap_bird.png')) ,(64,64))
 pipe_img  = pygame.image.load('pipe.png')
 from tf_agents.trajectories import trajectory
 from tf_agents.utils import common
+pygame.font.init()
+STAT_FONT = pygame.font.SysFont("comicsans" , 50)
 
-collect_episodes_per_iteration = 2
-num_iteration = 2500
+
+collect_episodes_per_iteration = 10
+num_iteration = 1000
 class Bird:
 
 	def __init__(self,x,y):
@@ -30,6 +33,8 @@ class Bird:
 		self.vel = 0
 		self.tick = 0 
 		self.height = self.y
+		self.score = 0
+		self.high_score = 0
 
 	def render(self,win):
 
@@ -73,7 +78,7 @@ class Pipe:
 		self.set_height()
 
 	def set_height(self):
-		self.height = random.randrange(50,450)
+		self.height = random.randrange(50,350)
 		self.top = self.height - self.PIPE_TOP.get_height()
 		self.bottom = self.height + self.GAP
 
@@ -106,14 +111,14 @@ class Pipe:
 class Flappy_bird_env(py_environment.PyEnvironment):
 
 	def __init__(self):
-		self.bird = Bird(250,350)
-		self._action_spec = array_spec.BoundedArraySpec(shape = () , dtype = np.int32 , minimum = 0 ,maximum = 1 , name = 'action')
+		self.bird = Bird(300,400)
+		self._action_spec = array_spec.BoundedArraySpec(shape = () , dtype = np.float32 , minimum = 0 ,maximum = 1 , name = 'action')
 		self._observation_spec = array_spec.BoundedArraySpec(shape=(3,) , dtype = np.int32 , name = 'observation' )
 		self._episode_ended = False
 		self.stayed_alive = 0
 		self.pipe_list = []
 		# self.batch_size = 1
-		pipe = Pipe(700)
+		pipe = Pipe(500)
 		self.pipe_list.append(pipe)
 
 	def render(self):
@@ -122,14 +127,23 @@ class Flappy_bird_env(py_environment.PyEnvironment):
 		self.bird.render(win)
 		for pipe in self.pipe_list:
 			pipe.render(win) 
+		score_label = STAT_FONT.render('Score : '+str(self.bird.score) , 1,(255,255,255))
+		win.blit(score_label , (600 - score_label.get_width()-400 , 40))
+		hight_score_label = STAT_FONT.render('High Score : '+str(self.bird.high_score) , 1,(255,255,255))
+		win.blit(hight_score_label , (600 - score_label.get_width()-400 , 80))
 		pygame.display.update()
 
 	def _reset(self):
-		self.bird = None
-		self.bird = Bird(250,350)
+		self.bird.x = 300
+		self.bird.y = 400
+		print('bird score : ' , self.bird.score)
+		if self.bird.high_score < self.bird.score:
+			self.bird.high_score = self.bird.score
+
+		self.bird.score = 0
 		self.pipe_list = []
-		self.pipe_list.append(Pipe(700))
-		self._current_time_step =  ts.restart(np.array([self.bird.y, abs(self.bird.x - self.pipe_list[0].height) , abs(self.bird.x - self.pipe_list[0].bottom)], dtype=np.int32))
+		self.pipe_list.append(Pipe(500))
+		self._current_time_step =  ts.restart(np.array([self.bird.y, abs(self.bird.y - self.pipe_list[0].height) , abs(self.bird.y - self.pipe_list[0].bottom )], dtype=np.int32))
 		return self._current_time_step
 
 
@@ -137,7 +151,7 @@ class Flappy_bird_env(py_environment.PyEnvironment):
 
 	
 
-		if action ==1 :
+		if action >0.5 :
 			self.bird.jump()
 
 		elif action == 0 :
@@ -158,14 +172,11 @@ class Flappy_bird_env(py_environment.PyEnvironment):
 		if self.pipe_list[0].passed == True:
 			self.pipe_list[0] = None
 			self.pipe_list = self.pipe_list[1:]
-
-		if self.bird.y > 800:
-			self._episode_ended = True
-
 		
 
-		if self.pipe_list[0].x < self.bird.x and self.pipe_list[0].passed == False:
+		if self.pipe_list[0].x < self.bird.x - 40 and self.pipe_list[0].passed == False:
 			self.pipe_list[0].passed = True
+			self.bird.score+=1
 			self.pipe_list.append(Pipe(700))
 			# print('appended')	
 
@@ -180,7 +191,7 @@ class Flappy_bird_env(py_environment.PyEnvironment):
 		if self._episode_ended:
 			self._episode_ended = False
 			print('episodes ended ')
-			self._current_time_step = ts.termination(np.array([self.bird.y, abs(self.bird.x - self.pipe_list[index].height) , abs(self.bird.x - self.pipe_list[index].bottom)] , dtype = np.int32 ) , reward = -1000 )
+			self._current_time_step = ts.termination(np.array([self.bird.y, abs(self.bird.y - self.pipe_list[index].height) , abs(self.bird.y - self.pipe_list[index].bottom)] , dtype = np.int32 ) , reward = -1000 )
 			return self._current_time_step
 		
 			# self._episode_ended = False
@@ -190,10 +201,10 @@ class Flappy_bird_env(py_environment.PyEnvironment):
 
 		if not self._episode_ended:
 			if self.pipe_list[0].passed == True:
-				self._current_time_step = ts.transition(np.array([self.bird.y, abs(self.bird.x - self.pipe_list[index].height) , abs(self.bird.x - self.pipe_list[index].bottom)] , dtype = np.int32) , reward = 1000, discount = 1)
+				self._current_time_step = ts.transition(np.array([self.bird.y, abs(self.bird.y - self.pipe_list[index].height) , abs(self.bird.y - self.pipe_list[index].bottom)] , dtype = np.int32) , reward = 1000, discount = 1)
 
 			else:	
-				self._current_time_step = ts.transition(np.array([self.bird.y, abs(self.bird.x - self.pipe_list[index].height) , abs(self.bird.x - self.pipe_list[index].bottom)] , dtype = np.int32) , reward = 0, discount = 1)
+				self._current_time_step = ts.transition(np.array([self.bird.y, abs(self.bird.y - self.pipe_list[index].height ) , abs(self.bird.y - self.pipe_list[index].bottom)] , dtype = np.int32) , reward = 1, discount = 1)
 			return self._current_time_step
 
 
@@ -234,9 +245,9 @@ clock = pygame.time.Clock()
 # 	# rand = random.choice([0 ,0,0,0,0, 1])
 # 	py_env._step(rand)
 
-actor_net = actor_distribution_network.ActorDistributionNetwork(py_env.observation_spec() , tensor_spec.from_spec( py_env.action_spec()), fc_layer_params = (100,))
+actor_net = actor_distribution_network.ActorDistributionNetwork(py_env.observation_spec() , tensor_spec.from_spec( py_env.action_spec()) , activation_fn = tf.keras.activations.tanh)
 
-optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=1e-3)
+optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=0.001)
 train_step_counter = tf.compat.v2.Variable(0)
 
 tf_agent = reinforce_agent.ReinforceAgent(py_env.time_step_spec() , tensor_spec.from_spec( py_env.action_spec()) , actor_network = actor_net , optimizer = optimizer , normalize_returns = True , train_step_counter = train_step_counter)
@@ -258,7 +269,6 @@ def collect_episode(environment , policy , num_episodes):
 		action_step = policy.action(time_step)
 		next_time_step = environment._step(action_step)
 		traj = trajectory.from_transition(time_step , action_step , next_time_step)
-
 		replay_buffers.add_batch(traj)
 
 		if traj.is_boundary():
@@ -277,18 +287,21 @@ for _ in range(num_iteration):
 	replay_buffers.clear()
 
 	step = tf_agent.train_step_counter.numpy()
+	if train_loss.loss == 0:
+		break
 
 	if step% 25:
 		print('step = {0}: loss = {1}'.format(step, train_loss.loss))
 
-py_env = Flappy_bird_env()
-num_episodes = 3 
-for _ in range(num_episodes):
-	time_step = py_env.reset()
-	while not time_step.is_last():
-		action_step = tf_agent.policy.action(time_step)
-		time_step = py_env.step(action_step.action)
-		py_env.render()
-		clock.tick(30)
+	py_env_test = Flappy_bird_env()
+	num_episodes = 10 
+	for _ in range(num_episodes):
+		time_step = py_env_test.reset()
+		while not time_step.is_last():
+			action_step = tf_agent.policy.action(time_step)
+			print('action_step' , action_step.action)
+			time_step = py_env_test.step(action_step.action)
+			py_env_test.render()
+			# clock.tick(30)
 
 
